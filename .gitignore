@@ -1,2 +1,25 @@
 *.class
 *.log
+
+# intellij
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea
+out
+
+# MacOS
+.DS_Store
+
+# sbt specific
+.cache
+.history
+.lib/
+dist/*
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+project/target
