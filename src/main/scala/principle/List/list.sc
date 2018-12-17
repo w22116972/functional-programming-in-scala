@@ -1,4 +1,4 @@
-import org.apache.spark.sql.sources.LessThan
+// import org.apache.spark.sql.sources.LessThan
 
 /* List property
 * 1. Immutable
