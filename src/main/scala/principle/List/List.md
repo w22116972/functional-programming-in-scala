@@ -232,6 +232,8 @@ def posElems2(xs: List[Int]): List[Int] = xs filter (x => x > 0)
 def pack[T](xs: List[T]): List[List[T]] = xs match {
   case Nil => Nil
   case x :: xs1 => 
+    val (first, rest) = xs.span(_ == x)
+    first :: pack(rest)
 }
 ```
 
@@ -239,7 +241,7 @@ def pack[T](xs: List[T]): List[List[T]] = xs match {
 > encode n consecutive duplicates of an element x as a pair (x, n)
 
 ```scala
-def encode
+def encode[T](xs: List[T]): List[(T, Int)] = pack(xs).map(ys => (ys.head, ys.length))
 ```
 
 ---
