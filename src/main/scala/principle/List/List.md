@@ -246,3 +246,59 @@ def encode[T](xs: List[T]): List[(T, Int)] = pack(xs).map(ys => (ys.head, ys.len
 
 ---
 
+# 5.5 Reduction of List
+
+```scala
+def sum(xs: List[Int]): Int = xs match {
+  case Nil => 0
+  case y :: ys => y + sum(ys)
+}
+```
+
+## ReduceLeft
+
+`List(x1, ...xn).reduceLeft op` = `((x1 op x2) op x3...) op xn`
+
+```scala
+def sum(xs: List[Int]) = (0 :: xs).reduceLeft((x, y) => x + y)
+def product(xs: List[Int]) = (1 :: xs).reduceLeft((x, y) => x * y)
+
+// Every `_` represents new param, from left to right
+// Parameters are defined at the next outer pair of parentheses ((x1 op x2) op x3...)
+def sum(xs: List[Int]) = (0 :: xs).reduceLeft(_ + _)
+def product(xs: List[Int]) = (1 :: xs).reduceLeft(_ * _)
+```
+
+## FoldLeft
+
+= `ReduceLeft` + **accumulator**
+
+`List(x1, ...xn).foldLeft z (op)` = `((z op x1) op x2...) op xn`
+
+```scala
+def sum(xs: List[Int]) = (xs.foldLeft 0) (_ + _)
+def product(xs: List[Int]) = (xs.foldLeft 1) (_ * _)
+```
+
+#### Implementation of `reduceLeft` and `foldLeft`
+
+```scala
+abstract class List[T] {
+  def reduceLeft(op: (T, T) => T): T = this.match{
+    case Nil => throw new Error("Nil.reduceLeft")
+    case x :: xs => (xs.foldLeft)(op)
+  }
+  def foldLeft[U](z: U)(op: (U, T) => U): U = this.match {
+    case Nil => z
+    case x :: xs => (xs.foldLeft op(z, x))(op)
+  } 
+}
+```
+
+#### `foldRight` (O), `foldLeft` (X)
+
+`foldLeft` will start from each element(value type) of x1, but `::` only applys to `List` type
+
+```scala
+def concat[T](xs: List[T], ys: List[T]): List[T] = (xs foldRight ys)(_ :: _)
+```
