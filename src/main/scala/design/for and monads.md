@@ -77,7 +77,7 @@ def filter[T](xs: List[T], p: T => Boolean): List[T] =
 
 ## Translation
 
-comopiler will convert `for` expression into `map`, `filter`, `flatMap`
+compiler will convert `for` expression into `map`, `filter`, `flatMap`
 
 #### `for` to `map`
 
@@ -111,19 +111,206 @@ for {
     j <- 1 until i
     if isPrime(i + j)
 } yield (i, j)
-// transalted to
+// translated to
 (1 until n).flatMap(i =>
     (1 until i).withFilter(j => isPrime(i+j))
     .map(j => (i, j)))  
 ```
 
-For example, books might not be a list, but a database stored on
-some server.
-As long as the client interface to the database defines the methods
-map, flatMap and withFilter, we can use the for syntax for querying
-the database.
-This is the basis of the Scala data base connection frameworks
-ScalaQuery and Slick.
+For example, books might not be a list, but a database stored on some server.
+As long as the client interface to the database defines the methods map, flatMap and withFilter, we can use the for syntax for querying the database.
+This is the basis of the Scala data base connection frameworks ScalaQuery and Slick.
 Similar ideas underly Microsoft’s LINQ.
 
 ---
+
+# 1.3 functional random generator
+
+## generator
+
+使隨機產生器可以用在各種資料型態
+```scala
+trait Generator[+T] {
+    def generate: T
+}
+
+val integers = new Generator[Int] {
+    val rand = new java.util.Random
+    def generate = rand.nextInt()
+}
+
+// sol 1
+val booleans = new Generator[Boolean] {
+    def generate = integers.generate > 0
+}
+// sol 2
+val booleans = for (x <- integers) yield x > 0
+// compiler's view of sol 2
+val booleans = integer.map(x => x > 0)
+
+// sol 1
+val pairs = new Generator[(Int, Int)] {
+    def generate = (integers.generate, integers.generate)
+}
+// sol 2
+def pairs[T, U](t: Generator[T], u: Generator[U]) = for {
+    x <- t 
+    y <- u 
+} yield (x, y)
+// compiler's view of sol 2
+def pairs[T, U](t: Generator[T], u: Generator[U]) = 
+    t.flatMap(x => u.map(y => (x, y)))
+```
+
+既然在編譯器眼中都轉成map, flatmap
+
+```scala
+trait Generator[+T] {
+    self => // this 
+    
+    def generate: T 
+
+    def map[S](f: T => S): Generator[S] = new Generator[S] {
+        // 之所以不能用this是因為此處是anonymous class, 
+        // 所以會refer到current(下面的)generate, 最後會變成無窮遞迴.
+        // 所以為了refer到上面的generate, 要在外面define self(指向trait Generator)
+        // note: f(generate) == f(this.generate) == f(Generator.this.generate)
+        def generate = f(self.generate)
+    }
+    def flatMap[S](f: T => Generator[S]): Generator[S] = new Generator[S] {
+        def generate = f(self.generate).generate
+    }
+}
+
+// compiler's view
+val booleans = new Generator[Boolean] {
+    def generate = (x: Int => x > 0)(integers.generate)
+}
+// sol 3
+val booleans = new Generator[Boolean] {
+    def generate = integers.generate > 0
+}
+
+// compiler's view
+def pairs[T, U](t: Generator[T], u: Generator[U]) = 
+    t.flatMap {
+        x => new Generator[(T, U)] { def generate = (x, u.generate) } 
+    }
+def pairs[T, U](t: Generator[T], u: Generator[U]) = new Generator[(T, U)] {
+    def generate = (new Generator[(T, U)] {
+        def generate = (t.generate, u.generate)
+    }).generate 
+}
+
+def pairs[T, U](t: Generator[T], u: Generator[U]) = new Generator[(T, U)] {
+    def generate = (t.generate, u.generate)
+}
+```
+
+## Other Generator example
+
+```scala
+def single[T](x: T): Generator[T] = new Generator[T] {
+    def generate = x
+}
+def choose(lo: Int, hi: Int): Generator[Int] =
+    for (x <- integers) yield lo + x % (hi - lo)
+def oneOf[T](xs: T*): Generator[T] =
+    for (idx <- choose(0, xs.length)) yield xs(idx)
+```
+
+## List Generator
+
+```scala
+def lists: Generator[List[Int]] = for {
+    isEmpty <- booleans
+    list <- if (isEmpty) emptyLists else nonEmptyLists
+} yield list
+
+def emptyLists = single(Nil)
+
+def nonEmptyLists = for {
+    head <- integers
+    tail <- lists
+} yield head :: tail
+```
+
+## Tree Generator
+
+```scala  
+trait Tree
+case class Inner(left: Tree, right: Tree) extends Tree
+case class Leaf(x: Int) extends Tree
+```
+
+```scala
+def leafs: Generator[Leaf] = for {
+    x <- integers
+} yield Leaf(x)
+
+def inners: Generator[Inner] = for {
+    left <- trees 
+    right <- trees
+} yield Inner(left, right)
+
+def trees: Generator[Tree] = for {
+    isLeaf <- booleans
+    tree <- if (isLeaf) leafs else inners
+} yield tree
+```
+
+## Random Testing
+
+```scala
+def test[T](g: Generator[T], numTimes: Int = 100)(test: T => Boolean): Unit = {
+    for (i <- 0 until numTimes) {
+        val value = g.generate
+        assert(test(value), "test failed for " + value)
+    }
+    println("passed " + numTimes + " tests")
+}
+```
+
+---
+
+# 1.4 Monads
+
+monad `M` is a parametric type `M[T]` with `flatMap` and `unit`, that have to satisfy some laws.
+
+```scala
+trait M[T] {
+    def flatMap[U](f: T => M[U]): M[U]
+}
+def unit[T](x: T): M[T]
+```
+
+#### example
+
+- `List` is monad with `unit(x) = List(x)`
+- `Set` is monad with `unit(x) = Set(x)`
+- `Option` is monad with `unit(x) = Some(x)`
+- `Generator` is monad with `unit(x) = single(x)`
+
+#### use `flatMap` and `unit` to define `map`
+
+```scala
+m.map(f) 
+m.flatMap(x => unit(f(x)))
+m.flatMap(f andThen unit)
+```
+
+## Monad Laws 
+
+To qualify as a monad, a type has to satisfy three laws:
+
+#### 1. Associativity
+
+`m flatMap f flatMap g == m flatMap (x => f(x) flatMap g)`
+
+#### 2. Left unit
+
+`unit(x).flatMap(f) == f(x)`
+
+#### 3. Right unit
+
+`m.flatMap(unit) == m`
